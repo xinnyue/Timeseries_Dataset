@@ -1,0 +1,232 @@
+---
+title: "Data Vizes in TS"
+author: "Xinyue Ji"
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+#remotes::install_github("joshuaulrich/quantmod")
+library(flipbookr)
+library(tidyverse)
+library(ggplot2)
+library(forecast)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(TSstudio)
+library(quantmod)
+#library(tidyquant)
+library(plotly)
+```
+
+### Data Visualization with Stock Data
+
+```{r ,echo=FALSE, results='hide'}
+options("getSymbols.warning4.0"=FALSE)
+options("getSymbols.yahoo.warning"=FALSE)
+
+tickers = c("PARA","DIS","NFLX" )
+for (i in tickers){
+  getSymbols(i,
+             from = "2012-10-01",
+             to = "2022-12-01")}
+
+x <- list(
+  title = "date"
+)
+y <- list(
+  title = "value"
+)
+
+stock <- data.frame(PARA$PARA.Adjusted,
+                    DIS$DIS.Adjusted,
+                    NFLX$NFLX.Adjusted)
+
+
+stock <- data.frame(stock,rownames(stock))
+colnames(stock) <- append(tickers,'Dates')
+
+stock$date<-as.Date(stock$Dates,"%Y-%m-%d")
+head(stock)
+```
+
+```{r ,echo=FALSE}
+ggplot(stock, aes(x=date)) +
+  geom_line(aes(y=PARA, colour="PARA"))+
+  geom_line(aes(y=DIS, colour="DIS"))+
+  geom_line(aes(y=NFLX, colour="NFLX"))+
+   labs(
+    title = "Stock Prices for the Entertainment Companies",
+    subtitle = "From 2013-2022",
+    x = "Date",
+    y = "Adjusted Closing Prices")+
+    theme(panel.background = element_rect(fill = "white", colour = "grey50"))+
+    guides(colour=guide_legend(title="Entertainment Companies")) 
+```
+
+<br> The plot above shows the changes of the stock prices for three entertainment companies from 2013 to 2022. The three companies are The Walt Disney Company, Netflix and Paramount. From the plot we can see the Netflix is significantly higher than other two companies and it increased very quickly from the 2018. Disney and Paramount have the similar tends that they are both stable until 2020 which the start of Covid-19 and they are increased both on 2021. The stock price was highest at end of the 2021 for Netflix, and then decreased suddenly. This phenomenon is very interesting. The next plot we will add the interaction and people can hover over the plot to see the details. <br>
+
+```{r ,echo=FALSE}
+g4<- ggplot(stock, aes(x=date)) +
+  geom_line(aes(y=PARA, colour="PARA"))+
+  geom_line(aes(y=DIS, colour="DIS"))+
+  geom_line(aes(y=NFLX, colour="NFLX"))+
+   labs(
+    title = "Stock Prices for the Entertainment Companies",
+    subtitle = "From 2013-2022",
+    x = "Date",
+    y = "Adjusted Closing Prices")+
+    guides(colour=guide_legend(title="Entertainment Companies")) 
+
+
+ggplotly(g4) %>%
+  layout(hovermode = "x")
+```
+
+<br> This plot could be hovered over to see the details of the three stocks. Last plot we can only see the general information and the changes of the stock price, but in this plot we can put the mouse on the plot to see the detailed information. Firstly, we can found that the highest stock price for the Netflix was on 11/15/2021 and I found there was a lot dramas release new seasons on that day, but the stock price was decreased from 12/03/2021 and stop decreased on 06/2021 which Stranger Things season 4 was released and Netflix bought The Amazing Spider-Man. Both Netflix and Disney were end higher than the 2013, but the stock price of Paramount was lower than the 2013. The highest stock price for Paramount was on 03.15.2021 and decreased to a level at end of March. I thought it because of the Paramount plus was launching in March.
+
+<br>
+
+### The **Meta Platforms, Inc.** Stock Price Plot 
+
+```{r ,echo=FALSE, results='hide'}
+meta <- getSymbols("META",auto.assign = FALSE, from = "2021-06-01",src="yahoo") 
+head(meta)
+```
+
+```{r ,echo=FALSE, results='hide'}
+start(meta)
+```
+
+```{r ,echo=FALSE, results='hide'}
+end(meta)
+```
+
+```{r ,echo=FALSE, results='hide'}
+meta=data.frame(meta)
+meta <- data.frame(meta,rownames(meta))
+head(meta)
+```
+
+```{r ,echo=FALSE, results='hide'}
+colnames(meta)[7] = "date" ##change column name
+head(meta)
+```
+
+```{r ,echo=FALSE, results='hide'}
+meta$date<-as.Date(meta$date,"%Y-%m-%d")
+str(meta)
+```
+
+<br>
+
+```{r ,echo=FALSE}
+## ggplot
+meta %>%
+  ggplot()+
+  geom_line(aes(y=META.Adjusted,x=date),color="orange")+ggtitle("Stock Price for Meta")
+```
+
+<br>
+
+The above plot is the adjusted stock price for the Meta company. Meta is a social media platform and it formerly the Facebook company. From it changed the company, everyone was very concerned its change. The stock price for the Meta was very high from the begining and continuely decreasing. The stock price of the Meta at the end was significant lower than the 2021. The highest stock price of the Meta was around September to October, and the next plot will show the details by using plotly to plot the data.
+
+<br>
+
+```{r ,echo=FALSE}
+## plotly
+fig <- plot_ly(meta, x = ~date, y = ~META.Adjusted, type = 'scatter', mode = 'lines')
+
+fig <- fig %>% layout(title = "Stock Price for Meta(Interactive Plot)")
+fig
+```
+
+<br> This plot is the same one from the last one, but this plot can hover over to see the details for the adjusted stock price for the Meta. Firstly, we can see that the highest stock price was on 09/07/2021 and the lowest stock price was on 11/03/2022. Secondly, the plot shows the trend very clearly that the stock price suddenly decreased on 02/02/2022. The general trend for the stock price of Meta is decreasing, even there were brief moments of increasing during March 2022- April 2022, but it was not sustained. Thirdy, there is another significantly decreased moment at Novemer 2022 and then increased until 01/13/2023. <br>
+
+```{r ,echo=FALSE}
+#plotly
+# candlestick plot
+
+df <- tail(meta, 30)
+
+figc <- df %>% plot_ly(x = ~date, type="candlestick",
+          open = ~META.Open, close = ~META.Close,
+          high = ~META.High, low = ~META.Low) 
+figc <- figc %>% layout(title = "Basic Candlestick Chart for Meta")
+figc
+
+```
+
+<br>
+
+The candle plot above is to show the every information for the Meta from December 2022 until now, which are open price, highest price of the day, lowest price of the day and the close price. The red color means the price decreased from the beginning to end of the day, and the green color means it increased. We can see the increased day was slightly more than decreased day, and we can found that the meta start increasing from the 12/29/2022 and it sustained with just four days decreased. It is a good situation for Meta at the beginning of 2023 and it is in an increasing trend now.
+
+<br>
+
+### Climate Data Plot using Plotly 
+
+<br>
+
+```{r ,echo=FALSE, results='hide', message=FALSE}
+climate = read_csv("climate.csv")
+head(climate)
+```
+
+```{r ,echo=FALSE, results='hide', message=FALSE}
+library(dplyr)
+climate$DATE <- as.Date(climate$DATE,"%Y-%m-%d")
+#climate1 = drop_na(climate$PRCP)
+climate1 = climate[!is.na(climate$PRCP),]
+climate2 = climate1 %>% select(c(1,2,3,6))
+climate2
+```
+
+```{r ,echo=FALSE, results='hide', message=FALSE}
+climate3 = climate2 %>% group_by(NAME) %>% summarise(mean_PRCP = mean(PRCP))
+climate3
+```
+
+```{r ,echo=FALSE}
+fig_mean <- plot_ly(climate3, y = ~NAME, x = ~mean_PRCP, type = "bar", orientation = 'h', color = ~NAME) %>%
+  layout(title = "Mean Precipitation in Different Area")
+fig_mean
+```
+
+```{r ,echo=FALSE, results='hide', message=FALSE}
+climate_temp = climate[!is.na(climate$TMAX),]
+climate_temp = climate_temp[!is.na(climate_temp$TMIN),]
+## select the column with name, date, max temperature and min temperature
+climate_temp1 = climate_temp %>% select(c(2,3,9,10))
+## select the MD area
+climate_t2 = climate_temp1[grep("MD",climate_temp1$NAME),]
+climate_t2
+climate_t2 = climate_t2[order(climate_t2$DATE),]
+climate_t2
+```
+
+<br>
+
+This plot is to show the mean precipitation in DC and MD area. From the plot we wan see that the 1.9 NW area of Washington, DC has the highest mean precipitation in 2021, and the Washington 2.0 SSW area has the lowest mean precipitation. To summarize the information form the plot we can find that the NW part of the DC area has more precipitaiton and the precipitation of SW part is lower than other three parts.
+
+<br>
+
+```{r ,echo=FALSE}
+temp <- plot_ly(climate_t2, x = ~DATE, y = ~TMAX, type = 'scatter', mode = 'lines',
+                line = list(color = 'rgba(191, 16, 27, 0.8)', width = 1.5),
+                showlegend = TRUE, name = 'Max Temperature')
+temp <- temp %>% add_trace(y = ~TMIN, type = 'scatter', mode = 'lines',
+             line = list(color = 'rgba(8, 81, 157, 0.7)'),fill = 'tonexty',fillcolor='rgba(73, 81, 162, 0.2)',
+            showlegend = TRUE, name = 'Min Temperature')
+
+temp <- temp %>% layout(title = "Max and Min Temperatures in MD Area",
+                        xaxis = list(title = "Date"),
+                        yaxis = list(title = "Temperature(°F)"))
+
+temp
+```
+
+<br>
+
+There is the max and min temperature changes in two MD areas, which are National Arboretum DC and Dalecarlia Reservoir. You can move the mouse on the plot and hover to see the details. This is a time series plot for temperature to show the changes during 01/2021 to 09/2021. From the plot we can see that the lowest temperature is 20°F and the highest temperature is 99°F. From the plot we can found that the temperature was high from June to August, and the weather from the January to March was freezing. The difference between max and min temperature was stable in this period.

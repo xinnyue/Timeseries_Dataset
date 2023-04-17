@@ -1,0 +1,559 @@
+---
+title: "ARMA/ARIMA/SARIMA Models"
+author: "Xinyue Ji"
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(flipbookr)
+library(tidyverse)
+library(ggplot2)
+library(forecast)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(TSstudio)
+library(quantmod)
+library(dplyr)
+library(plotly)
+library(tidyr)
+```
+
+# ARIMA Model
+
+### 1- ACF plot and test for Surface Temperature
+
+```{r,message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## read data
+temp  <- read.csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/1900-2022.csv")
+## rename column names
+colnames(temp) <- c("Date","Temperature")
+## convert Date column to "date" type
+temp1 <- extract(temp, Date, into = c("Year", "Month"), "(.{4})(.{2})", remove=TRUE) ## extract year and month data
+temp1$Date <- as.yearmon(paste(temp1$Year, temp1$Month), "%Y %m")
+## select the useful rows
+temp1 <- temp1 %>% select(c(3,4))
+#temp1
+## make the time seris data
+temp_ts <- ts(temp1$Temperature, start = c(1900,1),frequency = 12)
+tamp_ts <- ts(temp1$Temperature, start = c(1900,1), frequency = 365.25)
+## ACF plot
+acf100 <- ggAcf(temp_ts,100)+ggtitle("ACF Plot for Global Surface Temperature")
+acf1200<- ggAcf(temp_ts,1200)+ggtitle("ACF Plot for Global Surface Temperature")
+```
+
+#### ACF Plot
+
+::: panel-tabset
+## Lag100
+
+```{r, echo=FALSE}
+acf100
+```
+
+## Lag1200
+
+```{r, echo=FALSE}
+acf1200
+```
+:::
+
+I used two ACF plots here to check the stationary of the data. From the ACF plot of lag 100, we can see the line is decreased very slow and we cannot see if it change to 0 or not. After this situation, I changed the number to 600 to see the trends of the ACF plot, and we can see the line goes to 0 at this time around the lag 500. From these two ACF plots, I think there is a very **weak stationary** or we can say there is `not stationary` of the surface time series data.
+
+#### Augmented Dickey-Fuller Test
+
+```{r, warning=FALSE}
+## ADF test for monthly surface temperature
+adf.test(temp_ts)
+```
+
+After the ACF plot, we used ADF test to check the result if it is same as we observed in the plots. From the ADF test, we can see the p-value is 0.01 which is smaller 0.05, which means it rejected the null hypothesis and accept the alternative hypothesis. Therefore, the result from the ADF test is the time series data is stationary which is not a totally different result from we observed in plots. We got there is a very **`weakly stationary`** from the plots, and it still can be said there is stationary but is very weak. I decide to do the difference for the time series data to make it more stationary.
+
+### 2 - Difference
+
+```{r,message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+diff1 <- diff(temp_ts)
+diff1 %>% ggtsdisplay()
+
+```
+
+The plots displayed above depict the data after the first difference order, while the bottom two plots show the Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF) after the first difference order. After applying the first difference order, we can observe that the data appears to be **stationary** from the ACF plot.
+
+Based on the result, we can conclude that the first difference order has removed the non-stationarity in the data. As such, further differencing may not be necessary as over-differencing can also result in issues such as the loss of important information in the data or the introduction of unnecessary noise.
+
+#### Augmented Dickey-Fuller Test
+
+```{r, warning=FALSE}
+adf.test(diff1)
+```
+
+After performing the Augmented Dickey-Fuller (ADF) test to check if the data is stationary, we obtained a p-value of 0.01. This indicates that p\<0.05, which leads us to reject the null hypothesis and conclude that the data is **stationary**. Furthermore, the result we obtained from the ADF test is consistent with the information we gathered from the ACF plot. In this case, we can see that the ACF plot suggests that the data is `stationary`, which is confirmed by the ADF test.
+
+### 3 - *Using ACF and PACF to Determine the order of the model*
+
+```{r,message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## ACF plot
+acf(ts(diff1,f=1),main = "ACF Plot for Monthly Temperature after First Difference")
+## PACF plot
+pacf(ts(diff1,f=1),main ="PACF Plot for Monthly Temperature after First Difference")
+```
+
+By the ACF and PACF plots, I will choose the **q = 1,2**, since there is significant high value at lag0 and lag1; and I will choose **p = 1,2,3,4**, since the lag1 to lag4 has significant peak at the PACF plot; and **d = 1** for the model since there is the data is been difference once.
+
+### 4 - Fit the choice of ***ARIMA(p,d,q)***
+
+```{r,message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+d=1
+i=1
+df= data.frame()
+ls=matrix(rep(NA,6*16),nrow=16) # roughly nrow = 4x2x2
+
+for (p in 1:4)# p=1,2,3,4 :4
+{
+  for(q in 1:2)# q=1,2 :2
+  {
+    for(d in 0:1)# d=0,1 :2
+    {
+      
+      if(p-1+d+q-1<=15)
+      {
+        model<- Arima(temp_ts,order=c(p-1,d,q-1),include.drift=TRUE) 
+        ls[i,]= c(p-1,d,q-1,model$aic,model$bic,model$aicc)
+        i=i+1}
+    }
+  }
+}
+
+df= as.data.frame(ls)
+names(df)= c("p","d","q","AIC","BIC","AICc")
+
+#result
+knitr::kable(df)
+```
+
+```{r}
+## Select the model by comparing the AIC, BIC and AICc
+df[which.min(df$AIC),] 
+df[which.min(df$BIC),]
+df[which.min(df$AICc),]
+```
+
+By compare the AIC,BIC, and AICc from the different model choices, the model with the(3,1,1) and (2,1,1) act great. We need to do the further analysis to choose the best model.
+
+```{r}
+## fit two models
+fit1=Arima(temp_ts,order=c(3,1,1),include.drift = TRUE)
+#summary(fit1)
+fit2=Arima(temp_ts,order=c(2,1,1),include.drift = TRUE)
+#summary(fit2)
+## find the best fitted model
+plot(temp_ts, col="blue")
+lines(fitted(fit1),col="green")
+lines(fitted(fit2),col="red")
+legend(x = "topleft", legend = c("temp_ts", "fit1", "fit2"),fill=4:1)
+```
+
+```{r}
+summary(fit2)
+```
+
+From the plot, we can observe the lines are very similar between the two models. However, the red line, which is the model ARIMA(2,1,1) is the most fitted model compare to the original line and it covered the green line almost every part. Therefore, my model will be chose ARIMA(2,1,1).
+
+Equation: $x_{t}$ = 0.5397$x_{t-1}$ -0.2336$x_{t-2}$+$w_{t}$ -0.9727$w_{t-1}$
+
+### 5- Model Diagnostic
+
+```{r,message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+model_output <- capture.output(sarima(temp_ts, 2,1,1))
+accuracy(fit2)
+checkresiduals(fit2)
+```
+
+Here is the model diagnostic for the chosen model ARIMA(2,1,1). From the residuals plots we can see that the residuals are distributed at 0 most and the ACF plot of the residuals are shows stationary. From the accuracy metrics, the RMSE is 0.09 and the p-value is 0.02 \< 0.05. By the model diagnostic, our chosen model ARIMA(2,1,1) performs good.
+
+### 6 - Model choices by auto. arima() function
+
+```{r}
+auto.arima(tamp_ts)
+```
+
+The model used auto.arima() shows the result is **ARIMA(2,1,3)** which is slight different with the chosen model we chose above by the plots and test. My model is ARIMA(2,1,1), the difference between this two models is the number of q. I used q=1,2 to make the choices since there are two significant lags in the plot, but it also can count the 3 since there is a lag slightly higher than the significance line and I choose to remove it.
+
+### 7 - Forecast
+
+```{r,message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+autoplot(forecast(fit2,50))
+
+```
+
+Here is the forecast plot for the surface temperature changes in the future. We used our fitted model and the forecast result shows the temperature will still goes up after 2022 and the line will going to stable after a significant increasing trend. I think the result of the forecast make sense and it also fit to the forecast in the news that the temperature will still increase but it already move slower and the temperature will be stable in the next several decades.
+
+### 8 - Compare with Benchmark Method
+
+```{r}
+## mean method
+mean_temp<-meanf(temp_ts, h=12)
+checkresiduals(mean_temp)
+```
+
+```{r}
+## using naive method
+naive_temp<-naive(temp_ts, h=12)
+checkresiduals(naive_temp)
+
+```
+
+```{r}
+saive_temp<-snaive(temp_ts, h=12) #seasonal naive method
+checkresiduals(saive_temp) #serial correlation ; Lung Box p <0.05
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+autoplot(temp_ts) +
+  autolayer(meanf(temp_ts, h=12),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(temp_ts, h=12),
+            series="Naïve", PI=FALSE) +
+  autolayer(snaive(temp_ts, h=12),
+            series="Seasonal naïve", PI=FALSE) +
+  autolayer(snaive(temp_ts, h=12),
+            series="Seasonal naïve", PI=FALSE) +
+  ggtitle("Forecasts for Surface Temperature") +
+  xlab("Year") + ylab("Temperature(°C)") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+To using Benchmark Methods, there are three methods used here to compare with our fitted model, which are mean method, naive methods, and snaive methods. By plotting and doing the test above, we can observe that the `Seasonal Naive` method performs great. Next, we will use accuracy metrics to compare with the fitted model.
+
+```{r}
+accuracy(mean_temp)
+accuracy(naive_temp)
+accuracy(saive_temp)
+accuracy(fit2)
+```
+
+Here is the accuracy metrics for four different models, and by compare the RMSE and other parameters, we can observe that our chosen model works best and the error is the smallest to compare to other models.
+
+```{r}
+fit_s = Arima(temp_ts, order = c(2,1,1)) 
+summary(fit_s)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+autoplot(temp_ts) +
+  autolayer(forecast(fit2,80), 
+            series="chosen_model",PI=FALSE) +
+  autolayer(forecast(fit_s,80),series="saive_method",PI=FALSE)+
+  ggtitle("Forecasts for Surface Temperature") +
+  xlab("Time") + ylab("Temperature(°C)") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+This plot shows the forecast of surface temperature by using the chosen model and the model fitted by snaive method. The two lines shares the similar trend for the temperature, which is the surface temperature will still increase in the future, but the trend is going to stable. By the snaive method, the line is going to horizontal after a significant increased trend, but by our chosen model, the temperature will still increase and keep this trend in a long time. This model still need to be optimized and we need to consider more to fit the model, such as the seasonality and different periods. Further methods and models will be used to forecast in the next time.
+
+# SARIMA Model
+
+## Rainfall Data
+
+The time series plot is produced by the **U.S. Monthly Precipitation** dataset from 1960 to 2023. The rainfall data is collected from NOAA(National Oceanic and Atmospheric Administration) website. The data covered the U.S. national precipitation data per month. The data can be found at "Data Source" page.
+
+```{r,message=FALSE, warning=FALSE,echo=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+rainfall  <- read.csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/rainfall.csv")
+## rename column names
+colnames(rainfall) <- c("date","precipitation","anomaly")
+## convert Date column to "date" type
+rainfall$date <- as.Date(paste0(as.character(rainfall$date), '01'), format='%Y%m%d')
+#rainfall
+rain_ts <-ts(rainfall$precipitation, star=decimal_date(as.Date("1960-01-01")), frequency = 12)
+## plot
+plot_rain <- autoplot(rain_ts, color = "lightblue3", main = "Monthly U.S. Precipitation from 1960 to 2023")
+plot_rain
+```
+
+### 1- ACF, PACF Plot, and fit the choice of S***ARIMA(p,d,q)x(P,D,Q)~s~***
+
+```{r,message=FALSE, warning=FALSE,echo=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+acf_rain<-ggAcf(rain_ts,48)
+pacf_rain<-ggPacf(rain_ts)
+```
+
+#### ACF and PACF plot
+
+::: panel-tabset
+## ACF
+
+```{r,echo=FALSE}
+acf_rain
+```
+
+## PACF
+
+```{r, echo=FALSE}
+pacf_rain
+```
+:::
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+decompose_rain <- decompose(rain_ts)
+plot(decompose_rain$seasonal,main = "Seasonality of Precipitation")
+```
+
+For the ACF plot of precipitation, we can observe there are significant peak for lag 12,24,36 during the periods. And for check the decompose plot for seasonality, there also shows seasonal of the data. Therefore, I am decide to fit the SARIMA model for the rainfall data.
+
+```{r}
+rain_ts %>% diff() %>% ggtsdisplay()  ## first difference
+rain_ts %>% diff(lag = 12) %>% ggtsdisplay() ## seasonal difference
+rain_ts %>% diff(lag = 12) %>% diff() %>% ggtsdisplay() ## both
+```
+
+First, the rainfall time series data has been used the first differencing, there still can see the seasonality By doing the seasonal differencing, it looks like the correlation left, but the time series look not stationary. Therefore, I decide to do the both seasonal differencing and ordinary differencing. After both difference, the data looks more stationary.
+
+For this case, we can choose **D =1, d=0**; By the ACF and PACF plots, I will choose the **q = 0,1,2,3**, since there are three significant lags, and **Q = 0,1**; and I will choose **p = 0,1,2,3**, since the lag1 to lag11 has significant peak at the PACF plot, and **P =1,2**.
+
+### 2 - Model Fitting
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+SARIMA.c=function(p1,p2,q1,q2,P1,P2,Q1,Q2,data){
+  df=c()
+  d=1
+  D=1
+  s=12
+  
+  i=1
+  df= data.frame()
+  ls=matrix(rep(NA,9*36),nrow=36)
+
+  for (p in p1:p2)
+  {
+    for(q in q1:q2)
+    {
+      for(P in P1:P2)
+      {
+        for(Q in Q1:Q2)
+        {
+          if(p+d+q+P+D+Q<=9)
+          {
+            
+            model<- Arima(data,order=c(p-1,d,q-1),seasonal=c(P-1,D,Q-1))
+            ls[i,]= c(p-1,d,q-1,P-1,D,Q-1,model$aic,model$bic,model$aicc)
+            i=i+1
+          }
+        }
+      }
+    }
+  }
+  
+  df= as.data.frame(ls)
+  names(df)= c("p","d","q","P","D","Q","AIC","BIC","AICc")
+  df
+}
+output=SARIMA.c(p1=1,p2=4,q1=1,q2=4,P1=1,P2=3,Q1=1,Q2=3,data=rain_ts)
+knitr::kable(output)
+```
+
+```{r}
+## Select the model by comparing the AIC, BIC and AICc
+output[which.min(output$AIC),] 
+output[which.min(output$BIC),]
+output[which.min(output$AICc),]
+```
+
+By checking and comparing AIC,BIC, and AICc for the model choices, the all three parameters choose the same model, SARIMA(1,1,1)(0,1,1)\[12\]. We will use this model as the chosen model to do the model diagnostic.
+
+```{r}
+fit_rain <- Arima(rain_ts, order=c(1,1,1), seasonal=c(0,1,1))
+summary(fit_rain)
+```
+
+### 3 - Model Diagnostic
+
+```{r}
+set.seed(304)
+model_output <- capture.output(sarima(rain_ts, 1,1,1,0,1,1,12))
+```
+
+```{r}
+checkresiduals(fit_rain)
+```
+
+```{r}
+accuracy(fit_rain)
+```
+
+Given plots above are the residuals of the chosen model SARIMA(1,1,1)(0,1,1)\[12\]. For first residuals plot, we will check the standardized residuals first. By checking the standardized residuals, the mean of the lines should be 0 and the variance will about 1. From the chosen model's residual plot, the plot is generally follow this rule and it means our model is not poor. By checking the ACF of Residuals, there is no significant lags in the plot which prove the result we observed from the standardized residuals that our model performs not bad. Next, we are going to check the Q-Q plot to see if the modal is in normality, and the given plot shows there is normality of the data. By checking the p-value of the residuals, p-value is 0.2248 \> 0.05 which means the residuals are independent and this is also a good sign for the model to indicate there is a good model. For the second residual plot, it share the similar results as the first residuals plot, and the last plot shows the residuals are most distribute at 0 and no more than 1. The results of model diagnostic indicate that **our model performs good.**
+
+### 4 - Model choices by auto. arima() function
+
+```{r}
+auto.arima(rain_ts)
+```
+
+Using auto.arima() to check if there is any difference between our model and auto.arima() generated. Auto.arima() suggested the model will be SARIMA(1,0,0)(2,0,0)\[12\] which is different than our chosen model. Next, I will use accuracy matrix to compare which model is better.
+
+```{r}
+## fit auto.arima() model 
+fit_rain2 <- Arima(rain_ts, order=c(1,0,0), seasonal=c(2,0,0))
+summary(fit_rain2)
+```
+
+```{r}
+## checking the accuracy and aic of our chosen model
+accuracy(fit_rain)
+AIC(fit_rain)
+## checking the accuracy and aic of the model generated by auto.arima()
+accuracy(fit_rain2)
+AIC(fit_rain2)
+```
+
+After comparing the accuracy and AIC of the chosen model and the model generated by auto.arima(), the RMSE,MAE, AIC, etc. of our chosen model SARIMA(1,1,1)(0,1,1)\[12\] are all better than the auto.arima() one. Therefore, the model SARIMA(1,1,1)(0,1,1)\[12\] is the best model for this case.
+
+### 5 - Forecast
+
+Forecasting rainfall for next three years
+
+```{r}
+fit_rain %>% forecast(h=36) %>% autoplot()
+```
+
+```{r}
+sarima.for(rain_ts, 36, 1,1,1,0,1,1,12, main = "Long-term forecasting for Precipitation")
+```
+
+Here is the forecast plot for the rainfall(precipitation) in the future. The forecating plot used our fitted model SARIMA(1,1,1)(0,1,1)\[12\] and the forecast result shows the rainfall will follow the current trend and the precipitation will not be too much whenever in the first or the second long term plot. The second long-term forecasting plot shows the possible trend of the rainfall more clearly, and the forecast of the rain performs good and the result also reflect that the chosen model works good.
+
+### 6 - Compare with Benchmark
+
+```{r}
+autoplot(rain_ts) +
+  autolayer(meanf(rain_ts, h=36),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(rain_ts, h=36),
+            series="Naïve", PI=FALSE) +
+  autolayer(snaive(rain_ts, h=36),
+            series="SNaïve", PI=FALSE)+
+  autolayer(rwf(rain_ts, h=36, drift=TRUE),
+            series="Drift", PI=FALSE)+
+  autolayer(forecast(fit_rain,36), 
+            series="fit",PI=FALSE) +
+  guides(colour=guide_legend(title="Forecast"))
+
+```
+
+Using the Benchmark Methods to evaluate our models, there are three methods used here to compare with our fitted model, which are mean method, naive methods, and snaive methods. By plotting and doing the test above, we can observe that the **Seasonal Naive** method performs best by comparing with other two methos. The Seasonal Naive method and our fitted model looks similar in the plot. Next, we will use accuracy metrics to compare the errors with the fitted model.
+
+```{r}
+## snaive benchmark method
+fit_rain3 <- snaive(rain_ts, h=36) 
+## accuracy metrics for snaive benchmark method
+accuracy(fit_rain3)
+```
+
+```{r}
+## accuracy metrics for our fitted model
+accuracy(fit_rain)
+```
+
+By comparing the accuracy metrics, the error measurements of our fitted model SARIMA(1,1,1)(0,1,1)\[12\] are much lower than the `snaive` benchmark method which means our fitted model is great.
+
+### 7 - Seasonal Cross Validation
+
+#### 1 Step Cross Validation
+
+```{r,warning=FALSE,message=FALSE}
+n <- length(rain_ts)
+k <- 85
+st <- tsp(rain_ts)[1]+(k-2)/12 
+#tsp=time series period
+
+i=1
+
+for(i in 1:(n-k))
+{
+  xtrain <- window(rain_ts, end=st + i/12) #specify the end; i/12 is for each month
+  xtest <- window(rain_ts, start=st + (i+1)/12, end=st + (i+12)/12)
+  
+  fit1 <- Arima(xtrain, order=c(1,1,1), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, lambda=0, method="ML")
+  fit2 <- Arima(xtrain, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=TRUE, lambda=0, method="ML")
+  fcast1 <- forecast(fit1, h=1)
+  fcast2 <- forecast(fit2, h=1)
+  
+  error1 <- (fcast1$mean-xtest)^2
+  error2 <- (fcast2$mean-xtest)^2
+}
+```
+
+```{r}
+RMSE1= mean(error1)
+RMSE1
+RMSE2= mean(error2)
+RMSE2
+```
+
+#### 12-steps Cross Validation
+
+```{r}
+n <- length(rain_ts)
+k <- 95
+st <- tsp(rain_ts)[1]+(k-1)/12 
+#tsp=time series period
+
+i=1
+
+for(i in 1:((n-k)/12))
+{
+  xtrain <- window(rain_ts, end=st + i-1) #specify the end; i/12 is for each month
+  xtest <- window(rain_ts, start=st + (i-1)+ 1/12, end=st + i)
+  
+  fitmodel3 <- Arima(xtrain, order=c(1,1,1), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=FALSE, method="ML")
+  fitmodel4 <- Arima(xtrain, order=c(0,1,2), seasonal=list(order=c(0,1,1), period=12),
+                include.drift=FALSE, method="ML")
+  fcast3 <- forecast(fitmodel3, h=12)
+  fcast4 <- forecast(fitmodel4, h=12)
+  
+  error3 <- (fcast3$mean-xtest)^2
+  error4 <- (fcast4$mean-xtest)^2
+}
+```
+
+```{r}
+RMSE3= mean(error3)
+RMSE3
+RMSE4= mean(error4)
+RMSE4
+```
+
+Doing Cross validation for 1-step forecast and 12-steps forecast, our fitted model SARIMA(1,1,1)(0,1,1)\[12\] and the second best model SARIMA(0,1,2)(0,1,1)\[12\] will be used for comparison for which one is better.
+
+By doing seasonal cross validation using 1 step ahead forecase, the model SARIMA(1,1,1)(0,1,1)\[12\] has the loswest RMSE. By doing a seasonal cross validation using 12 steps ahead forecasts, the best model we chosen from above performs better than another model which performs better in 1 step ahead forecasts.Therefore, our model still performs good, even if it is not good at the long term, it is good for using to forecast in the short term】】.

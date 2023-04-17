@@ -1,0 +1,263 @@
+---
+title: "Financial Time Series Models"
+author: "Xinyue Ji"
+---
+
+## ARCH/GARCH Model Introduction
+
+The Autoregressive Conditional Heteroscedasticity (ARCH) and Generalized Autoregressive Conditional Heteroscedasticity (GARCH) models are statistical models that are commonly used in finance and economics to model time related volatility in financial data,such as stock prices and exchange rates. The ARCH/GARCH models provide a way to capture this volatility clustering by allowing the variance of the data to depend on past values of the data itself and past variances. The ARCH/GARCH model will help to identify the patterns of volatility in financial data, which is essential for risk management, asset pricing, and portfolio optimization.
+
+For the climate change impacts analysis, there are several largest companies in the energy sector need to be analyzed for this case, such as ExxonMobil, Chevron, and BP, have historically been associated with high carbon emissions.These companies are involved in the production, refinement, and distribution of oil and gas, which are major sources of carbon emissions. ExxonMobil is the largest carbon footprint company in the USA, we will get its stock price and do further financial time series analysis for this company.
+
+## Modeling
+
+### Data preparation and plot
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(flipbookr)
+library(tidyverse)
+library(ggplot2)
+library(forecast)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(TSstudio)
+library(quantmod)
+library(dplyr)
+library(plotly)
+library(tidyr)
+library(fGarch)
+library(FinTS)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+set.seed(123)
+xom <- getSymbols("XOM",auto.assign = FALSE, from = "2002-01-01",to = "2023-04-14",src="yahoo") 
+xom_df=data.frame(xom) ## make it to date frame
+xom_df <- data.frame(xom_df,rownames(xom_df))
+colnames(xom_df)[7] <- "Date" ## change column name
+xom_df$Date<-as.Date(xom_df$Date,"%Y-%m-%d")
+write.csv(xom_df,"~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/XOM.csv")
+head(xom_df)
+
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+fig <- xom_df %>% plot_ly(x = ~Date, type="candlestick",
+          open = ~XOM.Open, close = ~XOM.Close,
+          high = ~XOM.High, low = ~XOM.Low) 
+fig <- fig %>% layout(title = "Candlestick Chart for ExxonMobil from 2002-2023", yaxis = list(title = "Stock Price"))
+
+fig
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+candleChart(xom,multi.col=TRUE,theme='white')
+```
+
+From the stock price plot for ExxonMobil, we can observe that the stock price kept increasing from 2002 to 2008 and there is a decreased trend for stock, and then it kept a stable price at a long time. The significant drop down was occurred in 2020 at the beginning of the COVID-19, but there is a very fast increasing trend at the later 2020 and now it is still increasing. The data seems not stationary since it changed all the time and there are significant increased and decreased time.
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+log(xom$XOM.Adjusted) %>% diff() %>% chartSeries(theme = "white")
+```
+
+We can observe that there is high volatility of the ExxonMobil in 2008 and 2020. These two years are memorable. In 2008, the global financial crisis was triggered in the United States that eventually led to a collapse in the sub prime mortgage market. This caused a widespread credit freeze and a liquidity crisis, leading to panic selling and a sharp decline in stock prices. In 2020, the COVID-19 pandemic caused a sudden and severe shock to the global economy. Therefore, the high volatility in 2008 and 2020 are caused by the unexpected and significant shocks to the global economy, and every stock was impacted at that time.
+
+### AR/ARMA Model fitting
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+xom_ts <- ts(xom_df$`XOM.Adjusted`, start=decimal_date(as.Date("2002-01-01")), frequency = 365.25)
+
+## calculating Returns
+returns = (xom_ts) %>% diff()
+autoplot(returns) +ggtitle("Returns")
+ggAcf(returns,50, main = "ACF Returns for XOM")
+ggPacf(returns,50, main = "PACF Returns for XOM")
+```
+
+From the ACF and PACF plot, we can observe there is weak stationary for the XOM stock data, and from the plots, we will find out the appropriate p,q to do the model fitting. From the ACF and PACF plot, it can be observed that **p = 1,2,3,4**; **q = 1,2,3,4**; **d= 0,1.**
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+d=1
+i=1
+result= data.frame()
+ls=matrix(rep(NA,6*32),nrow=32)
+
+for (p in 1:4)
+{
+  for(q in 1:4)
+  {
+    for(d in 0:1)
+    {
+      
+      if(p-1+d+q-1<=15)
+      {
+        model<- Arima(returns,order=c(p-1,d,q-1),include.drift=TRUE) 
+        ls[i,]= c(p-1,d,q-1,model$aic,model$bic,model$aicc)
+        i=i+1
+      }
+    }
+  }
+}
+
+result= as.data.frame(ls)
+names(result)= c("p","d","q","AIC","BIC","AICc")
+
+#result
+knitr::kable(result)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+## Select the model by comparing the AIC, BIC and AICc
+result[which.min(result$AIC),] 
+result[which.min(result$BIC),] 
+result[which.min(result$AICc),] 
+```
+
+From the model choosing, there are two models chosen by smallest AIC and BIC, the models is ARIMA(2,0,3). Next, we will do model diagnostic to compare with the auto.arima() to choose the best model.
+
+```{r}
+auto.arima(returns)
+```
+
+By using auto.arima(), the auto.arima() suggests the ARIMA(2,0,0), and it is same as the model we chose by the function, so we will use the model diagnostic to find out the best model.
+
+#### Model Diagnostic
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+sarima(returns,2,0,0)
+fita1=arima(returns,order=c(2,0,0))
+summary(fita1)
+checkresiduals(fita1)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+sarima(returns,2,0,3)
+fita2=arima(returns,order=c(2,0,3))
+summary(fita2)
+checkresiduals(fita2)
+```
+
+```{r}
+accuracy(fita1)
+accuracy(fita2)
+```
+
+From the accuracy and model diagnostic, the model ARMA(2,3) performs better. ARMA(2,3) has the smller RMSE and there is no significant peak in the ACF residuals plot that compare to the model AR(2). The residuals for the ARMA(2,3) model performs good that all errors is associated at 0 and the there is normal distributions for the last residuals plot. Therefore, we will use ARMA(2,3) for the further model fittings. Since Q-Q plot shown, even the plots performs good at most of time and follow the line, but there still can observe there are errors diverge at the both ends, and the p-value is not significant. We will use ACF and PACF plot of squared returns, and the ARCH test to see if we need to do the further modeling.
+
+### ARCH/GARCH Model Fitting
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+acf(returns^2, na.action = na.pass)
+pacf(returns^2, na.action = na.pass)
+```
+
+```{r,warning=FALSE,message=FALSE}
+ArchTest(returns, lags=1, demean=TRUE)
+```
+
+By doing the ARCH/GARCH test, since the null hypothesis is no arch effects and we have the p\<0.05, therefore, we reject the null hypothesis and we need to do the ARCH/GARCH model. After checking the ACF and PACF plot of the squared returns, it seems the simple ARCH/GARCH model is not enough, and we need to fit the AR+ARCH/GARCH model.
+
+#### Model Fitting
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+arima.res <- fita2$residuals
+acf(arima.res,24)
+pacf(arima.res,24)
+```
+
+From the ACF and PACF plot, we can observe that the p = 1,2,3 and q = 1,2,3 will be chosen to do the ARCH/GARCH modeling.
+
+```{r,warning=FALSE,message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+model <- list() ## set counter
+cc <- 1
+for (p in 0:3) {
+  for (q in 1:3) {
+  
+model[[cc]] <- garch(arima.res,order=c(q,p),trace=F)
+cc <- cc + 1
+}
+} 
+
+## get AIC values for model evaluation
+GARCH_AIC <- sapply(model, AIC) ## model with lowest AIC is the best
+which(GARCH_AIC == min(GARCH_AIC))
+```
+
+```{r}
+model[[which(GARCH_AIC == min(GARCH_AIC))]]
+```
+
+By the GRACH model function result, the GARCH(1,1) will be chosen to do the further model fitting.
+
+```{r}
+summary(garchFit(~garch(1,1), arima.res,trace = F)) 
+```
+
+By checking the model, the alpha1 and beta 1 is significant, so we will continue go with GARCH(1,1) as the chosen model to do the model diagnostic.
+
+#### Model Diagnostic
+
+```{r,warning=FALSE,message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+garch.fit11<- garch(arima.res,order=c(1,1),trace=F)
+checkresiduals(garch.fit11)
+```
+
+```{r}
+Box.test (garch.fit11$residuals, type = "Ljung")
+```
+
+By the model diagnostic, the normal distribution of residuals of the model decreased obviously, and the residuals distributed around 0 and the ACF also perform as the expected. From the Box-Ljung test, the p-value \> 0.05, so we failed to reject the null hypothesis and this means the data are independently distributed, and this means the model we adjusted successfully and the errors are decreased by the GARCH model fitting.
+
+### Final Model
+
+```{r,warning=FALSE,message=FALSE}
+summary(fit_final <- garchFit(~arma(2,3)+garch(1,1), data=arima.res,trace = F))
+```
+
+As we chosen, the **final model is ARMA(2,3)+GARCH(1,1)**. The equation of the model is:
+
+$\phi(B) x_t = \delta + \theta(B) y_t$,
+
+where $\phi(B)=1+0.0970093 B- 0.5808525B^2$; and $\theta(B)=1+0.0993783B-0.5854837B^2-0.0230829B^3$
+
+$y_t=\sigma_t \epsilon_t$
+
+$var(y_t|y_{t-1})=\sigma ^2= 0.0008480+ 0.0789612(y_{t-1})^2 + 0.9256586\sigma_{t-1}^2$
+
+### Forecast
+
+```{r,warning=FALSE,message=FALSE}
+predict(fit_final , n.ahead = 60, trace = FALSE, plot=TRUE)
+```
+
+As we known, predict the stock price is very hard and no one knows what the stock will go in the next steps. From the forecasting of the ExxonMobil stock, as the interval is large and we have to see the stock price will have high volatility in the future, and should be cautious and choose this stock carefully.

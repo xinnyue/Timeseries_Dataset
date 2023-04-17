@@ -1,0 +1,144 @@
+---
+title: "Exploratory Data Analysis"
+author: "Xinyue Ji"
+---
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(flipbookr)
+library(tidyverse)
+library(ggplot2)
+library(forecast)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(TSstudio)
+library(quantmod)
+library(dplyr)
+library(plotly)
+library(tidyr)
+```
+
+## 1 - Original Time Series Plot
+
+Time series plot produced by **Ocean and Land Average Temperature** dataset. The data contains the global surface temperature from 1900 to 2022, covered the century. The data was gathered from the NOAA(National Oceanic and Atmospheric Administration) website.
+
+```{r message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## read data
+temp  <- read.csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/1900-2022.csv")
+## rename column names
+colnames(temp) <- c("Date","Temperature")
+## convert Date column to "date" type
+temp1 <- extract(temp, Date, into = c("Year", "Month"), "(.{4})(.{2})", remove=TRUE) ## extract year and month data
+temp1$Date <- as.yearmon(paste(temp1$Year, temp1$Month), "%Y %m")
+## select the useful rows
+temp1 <- temp1 %>% select(c(3,4))
+#head(temp1)
+
+## using ggplot to produce time series plot
+plot_temp <- ggplot(temp1, aes(x=Date, y=Temperature)) + 
+  geom_line(color = "navy", size = 0.6) + 
+  labs(
+  title = "Global Average Surface Temperature between 1900-2022",
+  x = "Date(Month)",
+  y = "Temperature(°C)")+
+  guides(colour=guide_legend(title="Temperature"))
+
+ggplotly(plot_temp) %>%
+  layout(hovermode = "x")
+
+```
+
+From the time series plot, it can be observed there is a clear uptrend for the surface temperature from 1900 to 2022, and the slope of the line is still increasing. From the original time series plot, it can be easily found that the temperature in the same month increased and is increasing. The January - March is the period with most highest temperature among the year, and this is an unexpected interesting findings from the plot since as my knowledge the highest period is June - August during a year. One of the possible reason is the surface temperature higher in Oceania, equator and southern hemisphere at this time period. There seems seasonality and periodic fluctuations during year period , and we will use other plots to do further analysis.
+
+## 2 - Lag Plot
+
+```{r message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+temp_ts <- ts(temp1$Temperature, start = c(1900,1), frequency = 12)
+temp_day <- ts(temp1$Temperature, start = c(1900,1), frequency = 365.25)
+monthly <-gglagplot(temp_ts,do.lines=FALSE) +xlab("Lags")+ylab("Yt") + ggtitle("Lag Plot for Monthly Temperature")
+daily <-gglagplot(temp_day,do.lines=FALSE) +xlab("Lags")+ylab("Yt") + ggtitle("Lag Plot for Daily Temperature")
+
+```
+
+::: panel-tabset
+## Monthly
+
+```{r, echo=FALSE}
+monthly
+```
+
+## Daily
+
+```{r, echo=FALSE}
+daily
+```
+:::
+
+The seasonality observed in the lag plots suggests that surface temperature data exhibits patterns that repeat over time, and these patterns can be useful for understanding and predicting temperature trends. For example, if we observe a strong correlation between the lag 1 of monthly temperature data and the lag 1 of daily temperature data, we can infer that daily temperature is influenced by monthly temperature fluctuations.Additionally, the strong correlation observed in the lag plots before lag 5 indicates that temperature patterns are relatively consistent in the short term, and this information can be used to identify anomalies or anomalies that may indicate climate trends.
+
+Moreover, the lag plots can also provide insight into potential causal relationships between variables. For example, if there is a strong correlation between surface temperature and a particular atmospheric or oceanic condition, we can investigate whether that condition is driving temperature changes or vice versa.
+
+## 3 - Decompose Time Series Plot
+
+```{r message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+decompose_temp <- decompose(temp_ts, type = "additive")
+plot(decompose_temp)
+
+```
+
+Monthly temperature is used to decomposing the time series since the time period is from 1900 to 2022, the daily temperature time series will contain plenty of terms. From the decomposing plot, it can be observed that there is a very clear upward trend from 1900 to 2022, and it is smoother than the original plot that removed some ambiguous changes. The line is in regular variation and there is seasonal component since the line goes up and down very regularly. The seasonal plot looks crowd since it contains a lot of terms from 1900 but it still can be observed the regular changes and seasonality clearly. Therefore, it is follow the additive model.
+
+## 4 - ACF and PACF Plots
+
+```{r message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## ACF plot
+ggAcf(temp_ts,600)+ggtitle("ACF Plot for Monthly Temperature")
+## PACF plot
+pacf(temp_ts,50, main="PACF for Monthly Tempareture")
+```
+
+From the ACF plot, there is a downward trend in the plots and the plots is decreasing from lag 0 to lag 600, and the line went to 0 around lag 500. As the plot shows, it can be observed that there is a **weak stationary** for the monthly temperature.
+
+The PACF plot shows the same result as the ACF plot since the line of the lag went down to zero after lag 1. The PACF shows after lag 0.5, the autocorrlation is not significant at any time. There seems seasonality in the plots but it is not obvious to observe from both plots, if the term of the plot increased, the results will be clearer.
+
+## 6 - Augmented Dickey-Fuller Test
+
+```{r, warning=FALSE}
+## ADF test for monthly surface temperature
+adf.test(temp_ts)
+```
+
+ADF test have p \< 0.05 which means there are statistically significant and since the alternative hypothesis is stationary, p\< 0.05 means both of the null hypothesis should be rejected. Therefore, the null hypothesis is the series are not stationary and they are rejected which means the series are **`stationary`**. The results as same as the result is observed from the ACF and PACF plot. There is a weak stationary from the monthly temperature time series data.
+
+## 7 - Moving Average Smoothing
+
+```{r warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+autoplot(temp_ts,series = "Data")+
+  autolayer(ma(temp_ts, order=5, centre=FALSE), series="5-MA") +
+  autolayer(ma(temp_ts, order=12, centre=FALSE), series="12-MA") +
+  autolayer(ma(temp_ts, order=30, centre=FALSE), series="30-MA") +
+  autolayer(ma(temp_ts, order=100, centre=FALSE), series="100-MA") +
+  xlab("Year") + ylab("Temperature(°C)") +
+  ggtitle("Moving Average Smoothing Plot for Surface Temperature from 1990 - 2022") +
+  scale_colour_manual(values=c("Data"="darkgrey","5-MA"="blue2","12-MA"="orange","30-MA"="red2","100-MA"="green2"),
+                      breaks=c("Data","5-MA","12-MA","30-MA","100-MA"))
+```
+
+The Moving Average Smoothing technique is commonly used in time series analysis to identify trends and patterns in data. By applying this method, we can reduce the noise in the data and highlight the underlying trends. In this study, we selected four different MA windows for smoothing: 5, 12, 30, and 100. Choosing the appropriate window size is crucial in the Moving Average Smoothing technique. We chose 12 as the monthly standard line since our surface temperature data was based on a monthly basis. We also selected 30 as a smaller window than 36 (multiples of 12) to avoid any overlap in the windows. Furthermore, we chose 100 as a high number to observe changes in smoothing windows.
+
+From the plot, we can see that the 12-MA line is very similar to the 5-MA line, indicating that the monthly data has less variation. The 5-MA line follows the trend and changes of the original line the most, while the 30-MA is smoother than the 12-MA and has fewer changes than the previous two lines. However, both the 12-MA and 30-MA lines have a similar general trend. On the other hand, the 100-MA line is much smoother and highlights the long-term trend more clearly.
+
+By analyzing the 100-MA (the green line), we can clearly observe the annual trend from 1900 to 2022 since the seasonality has been removed. We can see that there was a period of increase in temperature after 1940 followed by a decrease, but the temperature has been increasing overall throughout the past century. This observation confirms the widely-accepted fact that global temperatures have been increasing due to climate change.
