@@ -106,3 +106,52 @@ write_csv(green1,file='/Users/jixinyue/Desktop/GU/ANLY560/560Project/Timeseries_
 As known, the main cause of these changes is from human activities, such as the emission of greenhouse gases, the plots are used the dataset of carbon dioxide emissions to check out the emissions by different region and time.
 
 The first plot is a world map which can be used to observed the distribution of the carbon dioxide by different countries. There is a question in my guide questions: "What does energy consumption contribute climate change in different countries?" These plots can be used to answer this question. Carbon dioxide emissions are related to the populations. From the plots we could found that the populous country with the more carbon dioxide emissions, such as China, U.S. and India. For the bar plot, there shows the sum of the carbon dioxide emissions clearly of different countries. The highest country of carbon dioxide emissions is China, which is 212,227 MtCO2e, and the second one is the U.S. which is 177,781 MtCO2e. The third plot shows the time line of the carbon dioxide emissions for different countries. The U.S. is in a very stable situation, and China is in a uptrend and increased significantly. China exceeded the U.S. became the first one of the CO2 emissions in 2005. However, China is the most populous country and the emissions per person is not very high than other countries. Several countries are contribute much green gases for climate changes, and the UN has specific strategy for the countries who produce a lot of gases.
+
+## Health Data Plot
+
+```{r message=FALSE,warning=FALSE}
+#| code-fold: true
+## read cse file
+health <- read_csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/heat_deaths.csv",show_col_types = FALSE)
+## rename column names
+colnames(health) <- c("Year","death_allyear","death_summer")
+#head(health)
+## plot
+plot_health <- plot_ly(health, x = ~Year, y = ~death_allyear, type = 'scatter', mode = 'lines',line = list( width = 1.5),
+                showlegend = TRUE, name = 'Heat Death All Year') %>% 
+  add_trace(y = ~death_summer, type = 'scatter', mode = 'lines',line = list(color = 'rgba(191, 16, 27, 0.8)'),showlegend = TRUE, name = 'Heat Death in Summer')%>% 
+  layout(title = "Heat Related Death in U.S. From 1979 to 2018",
+        xaxis = list(title = "Year"),
+        yaxis = list(title = "Death Rate(per million people)"))
+
+plot_health
+
+```
+
+The plot used data collected by the CDC on "heat-related" deaths in the United States. It displays the rate of heat-related deaths from 1979 to 2018. The blue line shows the number of deaths where heat was the primary cause of death throughout the year, while the red line represents deaths where heat was either the main or contributing factor between May and September. It is important to note that data for May to September is only available from 1999 onwards, as the World Health Organization revised the classification of deaths in 1998 and 1999. As a result, it is difficult to compare data from before and after 1999 due to changes in the method used to classify deaths. Nonetheless, we can observe that the rate of heat-related deaths between May and September is higher than the annual rate, and there is a clear increasing trend in the data with some seasonality.
+
+## Financial Data
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+xom <- read_csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/XOM.csv")
+xom <- xom %>% select(c(-1))
+# Calculate 20 day moving average
+xom$SMA_20 <- TTR::SMA(xom$XOM.Adjusted, n = 20)
+# Calculate 100 days moving average
+xom$SMA_100 <- TTR::SMA(xom$XOM.Adjusted, n = 100)
+#head(xom)
+fig <- xom %>% plot_ly(x = ~Date, type="candlestick",
+          open = ~XOM.Open, close = ~XOM.Close,
+          high = ~XOM.High, low = ~XOM.Low) %>% 
+  add_trace(y = ~SMA_20, type = 'scatter', mode = 'lines',
+             line = list(color = 'orange'), name = "SMA_20") %>%
+  add_trace(y = ~SMA_100, type = 'scatter', mode = 'lines',
+             line = list(color = 'blue'),name = "SMA_100")%>% 
+  layout(title = "Candlestick Chart for ExxonMobil from 2002-2023", yaxis = list(title = "Stock Price"))
+
+fig
+```
+
+Financial data for ExxonMobil is obtained from Yahoo Finance. It is worth noting that ExxonMobil is the largest carbon footprint company in the United States. By analyzing the stock plot for ExxonMobil, we can observe that the stock price had an upward trend from 2002 to 2008, followed by a period of decline, and then remained stable for some time. However, there was a significant drop in the stock price at the beginning of the COVID-19 pandemic in 2020. This was a common occurrence in the stock market due to the pandemic's impact on the global economy. Nevertheless, the stock price of ExxonMobil recovered quickly and has been steadily increasing since then. To gain further insight, we can use the smoothing moving average line of MA-20 and MA-100. The larger the number, the smoother the line, and by checking the 100-day moving average, we can see that the overall trend is upward, with a notable drop in 2020. However, the stock price has since rebounded strongly and continues to rise.

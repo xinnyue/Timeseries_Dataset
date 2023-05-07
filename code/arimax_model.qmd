@@ -1,0 +1,304 @@
+---
+title: "ARIMAX/SARIMAX/VAR"
+author: "Xinyue Ji"
+---
+
+```{r,echo=FALSE,message=FALSE,warning=FALSE}
+library(flipbookr)
+library(tidyverse)
+library(ggplot2)
+library(forecast)
+library(astsa) 
+library(xts)
+library(tseries)
+library(fpp2)
+library(fma)
+library(lubridate)
+library(TSstudio)
+library(quantmod)
+library(dplyr)
+library(plotly)
+library(tidyr)
+library(knitr)
+```
+
+## Literature Review
+
+Sea level rise is one of the most significant impacts of climate change, and its consequences can be devastating for coastal regions worldwide. There are several reason caused the sea level rising. By the Professor Solomon, the co-author of the paper published on *roceedings of the National Academy of Sciences,* She said the greenhouse gas(carbon dioxide included) causes water heat up and expand, and temperature rising, and then causes the sea levels to rise.
+
+Several studies have found that rising temperatures can lead to sea level rise, primarily through thermal expansion of seawater. For instance, a study by Church et al. (2013) found that sea level rise from thermal expansion has been the dominant contributor to sea level rise since the 1970s. Additionally, researchers have noted that surface temperature increases can lead to melting of ice sheets and glaciers, which can significantly contribute to sea level rise. For example, a study by Shepherd et al. (2018) found that melting of the Antarctic ice sheet has accelerated in recent years, leading to an increasing contribution to sea level rise.
+
+Another significant factor in sea level rise is CO2 emissions. The release of greenhouse gases, such as CO2, into the atmosphere can lead to global warming, which in turn can cause sea level rise. A study by Rahmstorf et al. (2015) found that sea level rise is closely linked to cumulative CO2 emissions, with each ton of CO2 emissions contributing to a long-term rise in sea levels.
+
+The literature suggests that rising surface temperatures and increasing CO2 emissions are both significant factors in sea level rise. In this time, we will using the ARIMAX model for study and predict the sea level rises by exogenous factors, such as temperature, CO2 emissions and the sea ice extent.
+
+## ARIMAX Model
+
+### 1 - Merge Data
+
+For doing the ARIMAX/SARIMAX/VAR model, we need to have multiple variables to do the prediction. In this case, in order to predict the sea level rises, three exogenous variables will be used, which are **`Surface Temperature`**, **`CO2 Emissions`** and **`Sea Ice Extent`**. First step is to clean four csv files to appropriate data and then merge into one data frame by date. Since two csv only contains the yearly data, we will combine other variables from monthly and daily to yearly for merging the data in to one with the same date. After merging, the dataset is smaller than before and contains the multiple variables from 1979 to 2018.
+
+```{r,warning=FALSE,message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## clean temperature data
+temperature <- read.csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/temperature_year.csv")
+temperature <- temperature %>% select(c(1,2))
+colnames(temperature) <- c("date","surface_temperature")
+#head(temperature)
+## clean co2 emissions data
+co2 <- read.csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/global_co2_emissions.csv")
+colnames(co2) <- c("date","co2_emission")
+#head(co2)
+## clean sea-level data
+sealevel <- read.csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/sea-level.csv")
+sealevel <- sealevel %>% select(c(1,2))
+colnames(sealevel) <- c("date","sea_level")
+#head(sealevel)
+## clean sea ice data
+seaice <- read.csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/Globe_Sea_Ice.csv")
+seaice <- seaice %>% select(c(1,2,4))
+colnames(seaice) <- c("date","sea_ice","sea_ice_monthly")
+#head(seaice)
+
+## extract year from date column
+co2 <- extract(co2, date, into = c("date"), "(.{4})", remove=TRUE) ## extract year data
+#head(co2)
+## convert Date column to "date" type
+seaice$date <- as.Date(paste0(as.character(seaice$date), '01'), format='%Y%m%d')
+## aggregate monthly data into yearly data
+seaice <- extract(seaice, date, into = c("year"), "(.{4})", remove=TRUE)
+seaice1 <- seaice %>% 
+  group_by(year) %>%
+  summarise_each(funs(mean))
+seaice1 <- seaice1 %>% select(c(1,2))
+## rename the year column to date
+colnames(seaice1) <- c("date","sea_ice")
+#head(seaice1)
+
+## merge all the four tables in to one dataframe
+table1 <- merge(x= temperature,y= co2, by = "date")
+table2 <- merge(x= table1,y= sealevel, by = "date")
+final_df <- merge(x= table2,y= seaice1, by = "date")
+
+## replace the outliers with mean
+final_df$sea_ice[final_df$sea_ice < -800] <- NA
+final_df$sea_ice[is.na(final_df$sea_ice)] <- mean(final_df$sea_ice,na.rm = TRUE)
+knitr::kable(head(final_df))
+```
+
+### 2 - Plotting Data
+
+```{r,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+ts_climate<-ts(final_df,star=decimal_date(as.Date("1979-01-01",format = "%Y-%m-%d")))
+
+autoplot(ts_climate[,c(2:5)], facets=TRUE) +
+  xlab("Year") + ylab("") +
+  ggtitle("Variables influencing Sea Level")
+```
+
+Here is the plot for four different variables of the data. We can observe that the sea levels, surface temperature and CO2 emissions are all in down grade trend and the sea ice is in a decreasing trend. Next, we would use the surface temperature, CO2 emissions and sea ice extent to predict the sea levels.
+
+### 3 - Fitting model using auto.arima()
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+xreg <- cbind(tep = ts_climate[, "surface_temperature"],
+              ems = ts_climate[, "co2_emission"],
+              ice = ts_climate[, "sea_ice"])
+
+fit <- auto.arima(ts_climate[, "sea_level"], xreg = xreg)
+summary(fit)
+```
+
+```{r}
+checkresiduals(fit)
+```
+
+First, using the auto.arima() to generate a model. Auto.arima() suggests the model ARIMA(1,0,0) for the time series data, fitting the model and plot the residuals to check if the model performs good. From the residuals plot, since there are few observations of the data set, so the plots look splitting and the residual line is disperse. However, it still follow the rule that all error are no more than 1 and there is not significant line in the ACF plot which are indicate this model performs good.
+
+### 4 - Fitting the model manually
+
+```{r,warning=FALSE,message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## change three variables into time series data
+final_df$surface_temperature<-ts(final_df$surface_temperature,star=decimal_date(as.Date("1979-01-01",format = "%Y-%m-%d")))
+final_df$co2_emission<-ts(final_df$co2_emission,star=decimal_date(as.Date("1979-01-01",format = "%Y-%m-%d")))
+final_df$sea_level<-ts(final_df$sea_level,star=decimal_date(as.Date("1979-01-01",format = "%Y-%m-%d")))
+final_df$sea_ice<-ts(final_df$sea_ice,star=decimal_date(as.Date("1979-01-01",format = "%Y-%m-%d")))
+## fit the linear model
+fit_reg1 <- lm(sea_level ~ surface_temperature+co2_emission+sea_ice, data=final_df)
+summary(fit_reg1)
+```
+
+After the auto.arima() function, here is going to fit the model manually. First, we fit the model with all exogenous variables. From the results, the sea ice extend does not have strong correlation for the prediction, therefore, we will remove it and use rest of the two variables to fit the model.
+
+```{r}
+fit_reg <- lm(sea_level ~ surface_temperature+co2_emission, data=final_df)
+summary(fit_reg)
+```
+
+Here we get the new model without sea ice variable, and following steps will manually using it to fit a ARIMAX model.
+
+```{r,warning=FALSE,message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+fit_res<-ts(residuals(fit_reg),star=decimal_date(as.Date("1979-01-01",format = "%Y-%m-%d")))
+## look at the risiduals
+acf(fit_res)
+pacf(fit_res)
+```
+
+From the ACF and PACF plots, we can observe that the time series data is not stationary and it seems has seasonality, so the data need to be difference.
+
+#### Difference
+
+```{r}
+fit_res %>% diff() %>% ggtsdisplay()
+```
+
+After the first differencing, the ACF plot looks more stationary than the original ACF plot. By the ACF and PACF plot, we will choose **q=1,6** and **p = 2,6** to fit the ARIMAX model in the following steps, since there are significant peak at lag 6.
+
+```{r,warning=FALSE,message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+ARIMA.c=function(p1,p2,q1,q2,data){
+temp=c()
+d=1
+i=1
+temp= data.frame()
+ls=matrix(rep(NA,6*25),nrow=25)
+
+
+for (p in p1:p2)#
+{
+  for(q in q1:q2)#
+  {
+    for(d in 0:1)
+    {
+      
+      if(p+d+q<=6)
+      {
+        
+        model<- Arima(data,order=c(p,d,q))
+        ls[i,]= c(p,d,q,model$aic,model$bic,model$aicc)
+        i=i+1}
+      
+    }
+  }
+}
+
+temp= as.data.frame(ls)
+names(temp)= c("p","d","q","AIC","BIC","AICc")
+
+temp
+}
+
+output <- ARIMA.c(1,6,1,6,data=residuals(fit_reg))
+knitr::kable(output)
+```
+
+```{r}
+output[which.min(output$AIC),]
+output[which.min(output$BIC),]
+```
+
+There are two models from the manually model chosen, they are ARIMA(1,0,1) and ARIMA(3,0,3). Next, we will use model diagnostic to find out a best model.
+
+```{r, warning=FALSE,message=FALSE}
+set.seed(1234)
+model_output1 <- capture.output(sarima(fit_res, 1,0,1)) 
+model_output2 <- capture.output(sarima(fit_res, 3,0,3)) 
+model_output3 <- capture.output(sarima(fit_res, 1,0,0))
+```
+
+We conducted model diagnostics on three ARIMAX models, chosen manually and through the auto.arima() function. Based on the residuals plots, we found that the ARIMA(1,0,1) and ARIMA(1,0,0) models outperformed the ARIMA(3,0,3) model. The standardized residuals plot for the ARIMA(3,0,3) model showed a larger moving range and the p-values for the model were all close to zero, indicating that the errors were not independent and the model fit was not very good. We have selected the ARIMA(1,0,1) and ARIMA(1,0,0) models for cross-validation and further comparison as they showed better performance in the model diagnostics and are expected to provide more accurate predictions.
+
+### 5 - Cross Validation
+
+```{r,results='hide',message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+set.seed(304)
+farima1 <- function(x, h){forecast(Arima(x, order=c(1,0,1)), h=h)}
+error1 <- tsCV(fit_res, farima1, h=12)
+RMSE1=sqrt(colMeans(error1^2, na.rm=TRUE))
+RMSE1
+
+farima2 <- function(x, h){forecast(Arima(x, order=c(1,0,0)), h=h)}
+error2 <- tsCV(fit_res, farima2, h=12)
+RMSE2=sqrt(colMeans(error2^2, na.rm=TRUE))
+RMSE2
+```
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+data.frame(h = 1:12, RMSE1 = RMSE1,RMSE2 = RMSE2) %>%
+  ggplot() + 
+  labs(y="RMSE",x = "Horizon")+
+  geom_line(aes(x = h, y = RMSE1, color = "fit_manually"))+
+  geom_line(aes(x = h, y = RMSE2,color = "fit_auto"))+
+  guides(colour=guide_legend(title="Model")) 
+```
+
+After selecting the two best-performing models through model diagnostics, we proceeded to use cross-validation to further compare their performance. We chose the model we manually selected and the one generated by the auto.arima() function and used them to conduct 12-step forecasting, comparing the RMSE of the two models. Upon analyzing the resulting plot, we observed that the ARIMA(1,0,0) model generated by the auto.arima() function had a smaller RMSE than the ARIMA(1,0,1) model at the beginning. However, as the forecast horizon progressed, the ARIMA(1,0,1) model began to perform better, with a smaller RMSE than the ARIMA(1,0,0) model for most of the time. This suggests that the manually selected model may be more effective for long-term predictions, but does not perform as well in the short term.
+
+### 6 - Fitting model
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+xreg2 <- cbind(tep = final_df[, "surface_temperature"],
+              ems = final_df[, "co2_emission"])
+
+fit_new <- Arima(final_df$sea_level,order=c(1,0,1),xreg=xreg2)
+summary(fit_new)
+```
+
+Fitting the best ARIMA model that we chose from the previous steps. The best model is ARIMA(1,0,1) using for the fitting and forecasting. Model contains the factor with surface temperature and the CO2 emissions per capita. Here is the equation for this model:
+
+$x_{t}$ = 0.9888\$x\_{t-1}+$w_{t}$ -0.0335$w_{t-1}$
+
+### 7 - Forecasting
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+temp_fit<-auto.arima(final_df$surface_temperature) #fiting an ARIMA model to the surface temperautre variable
+summary(temp_fit)
+ftemp <- forecast(temp_fit)
+```
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+co2_fit<-auto.arima(final_df$co2_emission) #fiting an ARIMA model to the CO2 emissions variable
+summary(co2_fit) 
+fco<-forecast(co2_fit)
+```
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+fxreg <- cbind(Temp = ftemp$mean,
+              CO2 = fco$mean)
+
+fcast <- forecast(fit_new, xreg=fxreg)
+autoplot(fcast) + xlab("Year") +
+  ylab("Sea Level(inchs)")
+```
+
+The plot shows the forecast for the Sea Level rising by surface temperature and CO2 emissions per capita, the plot shows the sea levels will be stable and decreasing in the following years. Since the data only contains to 2018 and there are four years data missed, so the results might be influenced. However, the result is similar to the recent records and hope the sea level will be stable and not rise in the future.
+
+### 8 - Conclusion
+
+Based on the model fitting, we have determined that the most effective model for predicting sea level rises is ARIMA(1,0,1), which utilizes surface temperature and CO2 emissions as its primary inputs. Our analysis confirmed that these two factors significantly influence sea level rises, and the predictions generated by the model are generally reliable. However, it should be noted that although the model predictions indicate a smooth decrease in sea levels over time, this trend should be viewed with some degree of caution. In reality, sea levels are likely to fluctuate over time due to a variety of external factors, this caused by the limited data we used for prediction, if there are monthly or daily data, the results might be better.
+
+While the ARIMA(1,0,1) model is a valuable tool for predicting sea level rises, it's important to recognize that it represents only one piece of the puzzle. By incorporating additional factors into predictive models and working to reduce the environmental drivers of sea level rises, we can take a more comprehensive and effective approach to mitigating the impact of sea level rise on our planet.The incorporation of additional factors into predictive models, such as ocean currents and ice sheet melting, can enhance the accuracy of sea level rise predictions. Ultimately, it's essential that we continue to monitor the factors driving sea level rises and take action to address them. Hope that the sea level rise trend depicted in the forecasting plot proves accurate and that the earth is able to heal from the damage that has been done.
+
+[Complete Code File](https://github.com/xinnyue/Timeseries_Dataset/tree/main/code)

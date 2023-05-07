@@ -23,6 +23,8 @@ library(tidyr)
 
 # ARIMA Model
 
+## Ocean and Land Temperature
+
 ### 1- ACF plot and test for Surface Temperature
 
 ```{r,message=FALSE, warning=FALSE}
@@ -41,9 +43,11 @@ temp1 <- temp1 %>% select(c(3,4))
 ## make the time seris data
 temp_ts <- ts(temp1$Temperature, start = c(1900,1),frequency = 12)
 tamp_ts <- ts(temp1$Temperature, start = c(1900,1), frequency = 365.25)
+plot_temp <- autoplot(temp_ts, main = "Global Surface Temperature From 1900 to 2022")
+plot_temp
 ## ACF plot
 acf100 <- ggAcf(temp_ts,100)+ggtitle("ACF Plot for Global Surface Temperature")
-acf1200<- ggAcf(temp_ts,1200)+ggtitle("ACF Plot for Global Surface Temperature")
+acf600<- ggAcf(temp_ts,600)+ggtitle("ACF Plot for Global Surface Temperature")
 ```
 
 #### ACF Plot
@@ -58,7 +62,7 @@ acf100
 ## Lag1200
 
 ```{r, echo=FALSE}
-acf1200
+acf600
 ```
 :::
 
@@ -83,9 +87,9 @@ diff1 %>% ggtsdisplay()
 
 ```
 
-The plots displayed above depict the data after the first difference order, while the bottom two plots show the Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF) after the first difference order. After applying the first difference order, we can observe that the data appears to be **stationary** from the ACF plot.
+The plots displayed above depict the data after the first difference order, while the bottom two plots show the Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF) after the first order difference. After applying the first order difference, we can observe that the data appears to be **stationary** from the ACF plot.
 
-Based on the result, we can conclude that the first difference order has removed the non-stationarity in the data. As such, further differencing may not be necessary as over-differencing can also result in issues such as the loss of important information in the data or the introduction of unnecessary noise.
+Based on the result, we can conclude that the first order difference has removed the non-stationarity in the data. As such, further differencing may not be necessary as over-differencing can also result in issues such as the loss of important information in the data or the introduction of unnecessary noise.
 
 #### Augmented Dickey-Fuller Test
 
@@ -95,7 +99,7 @@ adf.test(diff1)
 
 After performing the Augmented Dickey-Fuller (ADF) test to check if the data is stationary, we obtained a p-value of 0.01. This indicates that p\<0.05, which leads us to reject the null hypothesis and conclude that the data is **stationary**. Furthermore, the result we obtained from the ADF test is consistent with the information we gathered from the ACF plot. In this case, we can see that the ACF plot suggests that the data is `stationary`, which is confirmed by the ADF test.
 
-### 3 - *Using ACF and PACF to Determine the order of the model*
+### 3 - Using ACF and PACF to Determine the order of the model
 
 ```{r,message=FALSE, warning=FALSE}
 #| code-fold: true
@@ -183,7 +187,7 @@ accuracy(fit2)
 checkresiduals(fit2)
 ```
 
-Here is the model diagnostic for the chosen model ARIMA(2,1,1). From the residuals plots we can see that the residuals are distributed at 0 most and the ACF plot of the residuals are shows stationary. From the accuracy metrics, the RMSE is 0.09 and the p-value is 0.02 \< 0.05. By the model diagnostic, our chosen model ARIMA(2,1,1) performs good.
+Here is the model diagnostic for the chosen model ARIMA(2,1,1). From the residuals plots we can see that the residuals are distributed at 0 most and the ACF plot of the residuals are shows stationary. The Normal Q-Q plot for std residuals also shows the model performs good since the errors are follow the line at most time and only the two sides has few errors discrete. There is also shows normal distribution at the last residuals plot, which also a good signal for showing the model performs good. From the accuracy metrics, the RMSE is 0.09 and the p-value is 0.02 \< 0.05. By the model diagnostic, our chosen model ARIMA(2,1,1) performs good.
 
 ### 6 - Model choices by auto. arima() function
 
@@ -271,6 +275,245 @@ autoplot(temp_ts) +
 ```
 
 This plot shows the forecast of surface temperature by using the chosen model and the model fitted by snaive method. The two lines shares the similar trend for the temperature, which is the surface temperature will still increase in the future, but the trend is going to stable. By the snaive method, the line is going to horizontal after a significant increased trend, but by our chosen model, the temperature will still increase and keep this trend in a long time. This model still need to be optimized and we need to consider more to fit the model, such as the seasonality and different periods. Further methods and models will be used to forecast in the next time.
+
+## Living Planet Index
+
+The second ARIMA model is used for fitting Living Planet Index data set. Living Planet Index data set is collected from kaggle. The data set contains different region, upper living index, lower living index and average living index. For this model, we would only used the global average living index for analysis.
+
+```{r,message=FALSE, warning=FALSE,echo=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## read data
+living  <- read.csv("~/Desktop/GU/ANLY560/560Project/Timeseries_Dataset/data/living-planet-index.csv",sep = ";")
+## keep the data only for world
+living1 <- living[grep("World",living$Region),]
+## keep the average column
+living1 <- living1 %>% select(c(1,2,3))
+colnames(living1) <- c("Region","Year","avg_index")
+living_ts = ts(living1$avg_index, start=decimal_date(as.Date("1970-01-01")))
+## plot
+plot_index <- autoplot(living_ts, main = "Global Average Living Planet Index From 1970 to 2018")
+plot_index
+
+```
+
+### 1- ACF plot and test for Living Planet Index
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+## ACF plot
+acf_living <- ggAcf(living_ts,20)+ggtitle("ACF Plot for Global Average Living Planet Index ")
+acf_living
+```
+
+To check the data whether is stationary, we would like to use ACF plot to observe the result. From the ACF plot, we can see that the value goes to 0 at lag18, which means the data is **weakly stationary**. We would use Augmented Dickey-Fuller test to do further verification.
+
+#### Augmented Dickey-Fuller Test
+
+```{r, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## ADF test for monthly surface temperature
+adf.test(living_ts)
+```
+
+After the ACF plot, we used ADF test to check the result if it is same as we observed in the plots. By ADF test, we got the p-value \>0.05, which means we failed to reject the null hypothesis. Null hypothesis of the ADF test is the data is not stationary, and we failed to reject it, so it means the data set is `not stationary`. Next step, we would use difference to make data more stationary.
+
+### 2 - Difference
+
+```{r,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+diff_live1 <- diff(living_ts)
+diff_live1 %>% ggtsdisplay()
+diff_live2 <- diff(living_ts) %>% diff()
+diff_live2 %>% ggtsdisplay()
+
+```
+
+The plots displayed above depict the data after the first and second order difference, while the bottom two plots show the Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF) after the difference.
+
+After applying first order difference, we can observe that the ACF plot still shows there is stationary in the data set, but it went weaker than before. Therefore, we would use the further difference to see if the data would be more stationary. After applying second order difference, we can clearly observe that the ACF plot became stationary and PACF as well. The second order difference removed the non-stationarity of the data, and we would use d=1,2 as the parameter for the model fitting in the following steps.
+
+#### **Augmented Dickey-Fuller Test**
+
+```{r,warning=FALSE,message=FALSE}
+adf.test(diff_live2)
+```
+
+After performing the Augmented Dickey-Fuller (ADF) test to check if the data is stationary, we obtained a p-value \<0.05, which leads us to reject the null hypothesis and conclude that the data is **stationary**. Furthermore, the result we obtained from the ADF test is consistent with the information we gathered from the ACF plot. The data set is stationary after second differncing.
+
+### 3- Using ACF and PACF to Determine the order of the model
+
+```{r,message=FALSE, warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## ACF plot
+acf(ts(diff_live2,f=1),main = "ACF Plot for Average Living Planet Index after Second Difference")
+## PACF plot
+pacf(ts(diff_live2,f=1),main ="PACF Plot for Average Living Planet Index after Second Difference")
+```
+
+After we difference the data, we would use the ACF and PACF plot to find the p and q value to do the model fitting. By the ACF and PACF plots, I will choose the **q = 0,1,2,3**, since there is significant high value at lag0 and it goes to 0 at lag 3; and I will choose **p = 0,1,2**, since the lag2 has significant peak at the PACF plot and the line change to 0 at lag 1; and **d = 1,2** for the model since there is the data used both first and second order difference.
+
+### 4 - Fit the choice of ***ARIMA(p,d,q)***
+
+```{r,message=FALSE,warning=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+
+d=1
+i=1
+df2= data.frame()
+ls2=matrix(rep(NA,6*12),nrow=12) 
+
+for (p in 1:2)
+{
+  for(q in 1:3)
+  {
+    for(d in 1:2)
+    {
+      
+      if(p-1+d+q-1<=10)
+      {
+        model2<- Arima(living_ts,order=c(p-1,d,q-1),include.drift=TRUE) 
+        ls2[i,]= c(p-1,d,q-1,model2$aic,model2$bic,model2$aicc)
+        i=i+1}
+    }
+  }
+}
+
+df2= as.data.frame(ls2)
+names(df2)= c("p","d","q","AIC","BIC","AICc")
+
+#result
+knitr::kable(df2)
+```
+
+```{r}
+df2[which.min(df2$AIC),] 
+df2[which.min(df2$BIC),]
+df2[which.min(df2$AICc),]
+```
+
+By compare the AIC,BIC, and AICc from the different model choices, the model with the ARIMA(1,1,2) and ARIMA(0,2,0) act great. We need to do the further analysis to choose the best model.
+
+```{r,warning=FALSE,message=FALSE}
+#| code-fold: true
+#| code-summary: "Show the code"
+## fit two models
+fit_liv1=Arima(living_ts,order=c(1,1,2),include.drift = TRUE)
+#summary(fit1)
+fit_liv2=Arima(living_ts,order=c(0,2,0),include.drift = TRUE)
+#summary(fit2)
+## find the best fitted model
+plot(living_ts, col="blue")
+lines(fitted(fit_liv1),col="green")
+lines(fitted(fit_liv2),col="red")
+legend(x = "topleft", legend = c("living_ts", "fit1", "fit2"),fill=4:1)
+```
+
+From the plot, we can observe the lines are very similar between the two models. We would do the further model diagnostic to choose the best model.
+
+### 5- Model Diagnostic
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+model_output1 <- capture.output(sarima(living_ts, 1,1,2))
+accuracy(fit_liv1)
+checkresiduals(fit_liv1)
+
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+model_output2 <- capture.output(sarima(living_ts, 0,2,0))
+accuracy(fit_liv2)
+checkresiduals(fit_liv2)
+```
+
+There are model diagnostic for ARIMA(1,1,2) and ARIMA(0,2,0). First, we would like to discuss about the model diagnostic plot for model ARIMA(1,1,2). From the plot we can see that the standardized residuals are distributed most at 0 and between -2 to 2. The ACF plot also shows a great result which there is not significant peak in the plot. To check the Q-Q plot, the errors are distributed follow the line at the most of time and only few points at the sides are discrete. For the ARIMA(0,2,0), the standardized residuals have a higher fluctuation and the ACF has significant line at the plot. The Q-Q plot performs not bad, but the normality of the error is not good. From the plot, we would see that the ARIMA(1,1,2) performs better. We can also check the accuracy table for the two models, the ARIMA(1,1,2) has a lower RMSE that compare to the ARIMA(0,2,0). Therefore, we would choose the model ARIMA(0,2,0) as our best model.
+
+```{r}
+summary(fit_liv1)
+```
+
+**Here is the equation for the choosen model:**
+
+$x_{t}$ = 0.2940$x_{t-1}$+$w_{t}$ +1.0111$w_{t-1}$+$w_{t-2}$
+
+### 6 - Model choices by auto. arima() function
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+auto.arima(living_ts)
+```
+
+To check the model choices by auto.arima() function, we found that the auto.arima() suggest the same model as one of model we manually chose. However, as the model diagnostic we made above, the other model ARIMA(1,1,2) perform better than the ARIMA(0,0,2). ARIMA(0,0,2) is also a good model for this data but our chosen model is slightly better than it, so I will continue go with the ARIMA(1,1,2).
+
+### 7 - Forecast
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+autoplot(forecast(fit_liv1,30))
+```
+
+Here is the forecast plot for the global average living planet index. We used our fitted model to forecast the living planet index in the next 30 years after the current year. The line shows a clearly downward trend and it will continue decrease. The living planet index indicates the species diversity, and this forecasting means the species will loss with a horrible speed in the future. This is a bad news for us and the whole ecosystem. The best situation is the decreasing speed is moving slower, but the decreasing trend is the fact and would not change.
+
+### 8 - Compare with Benchmark Method
+
+```{r}
+## mean method
+mean_liv<-meanf(living_ts,h=30)
+checkresiduals(mean_liv)
+```
+
+```{r}
+## using naive method
+naive_liv<-naive(living_ts,h=30)
+checkresiduals(naive_liv)
+```
+
+```{r}
+saive_liv<-snaive(living_ts,h=30) #seasonal naive method
+checkresiduals(saive_liv) 
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: "Show the code"
+autoplot(living_ts) +
+  autolayer(meanf(living_ts,h=30),
+            series="Mean", PI=FALSE) +
+  autolayer(naive(living_ts,h=30),
+            series="Naïve", PI=FALSE) +
+  autolayer(snaive(living_ts,h=30),
+            series="Seasonal naïve", PI=FALSE) +
+  autolayer(snaive(living_ts,h=30),
+            series="Seasonal naïve", PI=FALSE) +
+  autolayer(forecast(fit_liv1,h=30), 
+            series="fit",PI=FALSE)+
+  ggtitle("Forecasts for Living Planet Index") +
+  xlab("Year") + ylab("Index") +
+  guides(colour=guide_legend(title="Forecast"))
+```
+
+\
+To using Benchmark Methods, there are three methods used here to compare with our fitted model, which are mean method, naive methods, and snaive methods. By plotting and doing the test above, we can observe that the Naive and Seasonal Naive method performs similar. However, our fitted model performs best in the forecast plot. Next, we will use accuracy metrics to compare with the fitted model.
+
+```{r}
+accuracy(mean_liv)
+accuracy(naive_liv)
+accuracy(saive_liv)
+accuracy(fit_liv1)
+```
+
+Here is the accuracy metrics for four different models, and by compare the RMSE and other parameters, we can observe that our chosen model absolutely works best and the error is the smallest to compare to other models. Then the best model for this data set is the ARIMA model, and it would performs more reasonable prediction for the living planet index data set.
 
 # SARIMA Model
 
@@ -556,4 +799,6 @@ RMSE4
 
 Doing Cross validation for 1-step forecast and 12-steps forecast, our fitted model SARIMA(1,1,1)(0,1,1)\[12\] and the second best model SARIMA(0,1,2)(0,1,1)\[12\] will be used for comparison for which one is better.
 
-By doing seasonal cross validation using 1 step ahead forecase, the model SARIMA(1,1,1)(0,1,1)\[12\] has the loswest RMSE. By doing a seasonal cross validation using 12 steps ahead forecasts, the best model we chosen from above performs better than another model which performs better in 1 step ahead forecasts.Therefore, our model still performs good, even if it is not good at the long term, it is good for using to forecast in the short term】】.
+By doing seasonal cross validation using 1 step ahead forecase, the model SARIMA(1,1,1)(0,1,1)\[12\] has the loswest RMSE. By doing a seasonal cross validation using 12 steps ahead forecasts, the best model we chosen from above performs better than another model which performs better in 1 step ahead forecasts.Therefore, our model still performs good, even if it is not good at the long term, it is good for using to forecast in the short term.
+
+[Complete Code File](https://github.com/xinnyue/Timeseries_Dataset/tree/main/code)
